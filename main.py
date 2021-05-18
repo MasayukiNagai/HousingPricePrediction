@@ -214,7 +214,7 @@ def testModel(model, predictors):
 
 
 def forwardSelection(model, numPredictors=20):
-    print('----- Forward Selction -----')
+    print(f'----- Forward Selction: {numPredictors} -----')
     trainDF = pd.read_csv(train_file)
     X, y = transformData(trainDF)
     numericAttrs = getNumericAttrs(X)
@@ -236,6 +236,7 @@ def forwardSelection(model, numPredictors=20):
                 bestScore = score
                 bestAttr = attr
         if bestAttr in predictors:
+            print('Escaping: The score did not get improved in this loop')
             break
         predictors.append(bestAttr)
         candidateAttrs.remove(bestAttr)
@@ -243,7 +244,44 @@ def forwardSelection(model, numPredictors=20):
         print(f'{len(predictors)}) {predictors}: {bestScore:.5f} ({improved_rate:.3f}%)')
         scores.append(round(bestScore, 6))
     print(f'The change in scores: {scores}')
-    showCoefs(model, X[predictors], y)
+    print('----- Selection complete -----')
+    return predictors
+
+
+def forwardSelectionByRate(model, rate=0.1):
+    print(f'----- Forward Selction: rate {rate} -----')
+    trainDF = pd.read_csv(train_file)
+    X, y = transformData(trainDF)
+    numericAttrs = getNumericAttrs(X)
+    candidateAttrs = list(numericAttrs)
+    candidateAttrs.remove('Id')
+    print(f'{len(candidateAttrs)} candidate attributes')
+    predictors = []  # ['OverallQual', 'AllSF', 'GarageCars']
+    for pred in predictors:
+        candidateAttrs.remove(pred)
+    bestScore = 1
+    bestAttr = ''
+    scores = [0.3]  # arbitrary initial value
+    while True:
+        for attr in candidateAttrs:
+            tmp_predictors = predictors.copy()
+            tmp_predictors.append(attr)       
+            score = rmse_cv(model, X[tmp_predictors], y).mean()
+            if score < bestScore:
+                bestScore = score
+                bestAttr = attr
+        if bestAttr in predictors:
+            print('Escaping: The score did not get improved in this loop')
+            break
+        predictors.append(bestAttr)
+        candidateAttrs.remove(bestAttr)
+        improved_rate = (scores[-1] - bestScore)/scores[-1]
+        print(f'{len(predictors)}) {predictors}: {bestScore:.5f} ({improved_rate*100:.3f}%)')
+        scores.append(round(bestScore, 6))
+        if improved_rate < rate:
+            print(f'The improved rate is below {rate}')
+            break
+    print(f'The change in scores: {scores}')
     print('----- Selection complete -----')
     return predictors
 
@@ -251,6 +289,7 @@ def forwardSelection(model, numPredictors=20):
 def findBestModelforLR(numPredictors=16):
     lr = LinearRegression()
     predictors = forwardSelection(lr, numPredictors)
+    # predictors = forwardSelectionByRate(lr)
     trainDF = pd.read_csv(train_file)
     X_train, y_train = transformData(trainDF) 
     testBySplitTrainData(lr, predictors)
@@ -337,18 +376,28 @@ def findBestAlphaforLasso(predictors):
 def findBestModelforGBR(numPredictors=16):
     max_depth = 5
     # maybe loss, learning_rate, min_samples_X as well
-    params = {'n_estimators': 1000, 'learning_rate': 0.01, 
+    params = {'n_estimators': 100, 'learning_rate': 0.1, 
               'max_depth':max_depth, 'max_features':'sqrt',
               'min_samples_leaf':15, 'loss':'huber', 'random_state': seed}
     GBR = GradientBoostingRegressor(**params)
     # predictors = forwardSelection(GBR, numPredictors)
-    predictors = ['OverallQual', 'AllSF', 'GarageCars', 'BsmtUnfSF', 'YearRemodAdd-s3', 
-                  'MSZoning_RM', 'MSZoning_C (all)', 'OverallCond-sq', 'YearsOld-sq', 
-                  'Fireplaces', 'Neighborhood_Crawfor', 'MSSubClass_160', 'SaleCondition_Abnorml', 
-                  'LotArea', 'KitchenQual', 'Functional']
+    predictors = ['AllSF-sq', 'OverallQual', 'YearsOld', 'OverallCond', 'BsmtUnfSF', 
+                  'GarageCars', 'MSZoning_RM', 'YearsOld-log', 'MSZoning_C (all)', 'Fireplaces', 
+                  'OverallQual-s3', 'LotArea', 'Neighborhood_Crawfor', 'Functional', 'NearArtery', 
+                  'TotalBsmtSF-sq', 'KitchenAbvGr', 'SaleCondition_Abnorml', 'MSSubClass_160', 'CentralAir', 
+                  'BsmtExposure', 'KitchenQual', 'ScreenPorch', 'Neighborhood_BrkSide', 'Exterior1st_BrkFace', 
+                  'Neighborhood_Blmngtn', 'Neighborhood_MeadowV', 'Neighborhood_StoneBr', 'HeatingQC', 'SaleCondition_Partial', 
+                  'WoodDeckSF', 'Neighborhood_NoRidge', 'Neighborhood_Edwards', 'GarageQual', 'Neighborhood_ClearCr', 
+                  'BsmtQual', 'Neighborhood_Somerst', 'Neighborhood_NridgHt', 'PoolArea', 'HalfBath', 
+                  'MSSubClass_30', 'BsmtFinSF2', 'YearRemodAdd-log', 'OverallCond-s3', 'Neighborhood_Veenker', 
+                  'MSSubClass_120', 'BsmtFinType1', 'GarageCars-log', '3SsnPorch', 'Exterior1st_MetalSd']
     testBySplitTrainData(GBR, predictors)
     trainDF = pd.read_csv(train_file)
     X_train, y_train = transformData(trainDF)
+    params = {'n_estimators': 1000, 'learning_rate': 0.01, 
+              'max_depth':max_depth, 'max_features':'sqrt',
+              'min_samples_leaf':15, 'loss':'huber', 'random_state': seed}
+    GBR = GradientBoostingRegressor(**params)    
     analyzeGBR(GBR, params, X_train[predictors], y_train)
 
 
@@ -515,7 +564,7 @@ def main():
     # testModel(lr, predictors)
     
     ### LinearRegression
-    # lr = LinearRegression()
+    lr = LinearRegression()
     ## 16
     # predictors = ['AllSF-sq', 'OverallQual', 'YearsOld', 'OverallCond', 'BsmtUnfSF', 
     #               'GarageCars', 'MSZoning_RM', 'YearsOld-log', 'MSZoning_C (all)', 'Fireplaces', 
@@ -529,6 +578,18 @@ def main():
     #               'BsmtExposure', 'KitchenQual', 'ScreenPorch', 'Neighborhood_BrkSide', 'Exterior1st_BrkFace', 
     #               'Neighborhood_Blmngtn', 'Neighborhood_StoneBr', 'Neighborhood_MeadowV', 'Neighborhood_NoRidge', 'WoodDeckSF']
     # outfile = './data/lr30.csv'
+    ## 50
+    predictors = ['AllSF-sq', 'OverallQual', 'YearsOld', 'OverallCond', 'BsmtUnfSF', 
+                  'GarageCars', 'MSZoning_RM', 'YearsOld-log', 'MSZoning_C (all)', 'Fireplaces', 
+                  'OverallQual-s3', 'NearArtery', 'Functional', 'TotalBsmtSF-sq', 'KitchenAbvGr', 
+                  'SaleCondition_Abnorml', 'LotArea', 'Neighborhood_Crawfor', 'MSSubClass_160', 'CentralAir', 
+                  'BsmtExposure', 'KitchenQual', 'ScreenPorch', 'Neighborhood_BrkSide', 'Exterior1st_BrkFace', 
+                  'Neighborhood_Blmngtn', 'Neighborhood_StoneBr', 'Neighborhood_MeadowV', 'Neighborhood_NoRidge', 'WoodDeckSF',
+                  'SaleCondition_Partial', 'HeatingQC', 'GarageQual', 'Neighborhood_ClearCr', 'HalfBath', 
+                  'Neighborhood_Somerst', 'Neighborhood_NridgHt', 'PoolArea', 'OverallQual-s2', 'BsmtFinType1', 
+                  'Neighborhood_Veenker', 'GarageCars-log', 'Neighborhood_Edwards', 'MSSubClass_30', 'YearRemodAdd-log', 
+                  'MSSubClass_120', 'BsmtFinSF2', 'OverallCond-s3', 'LotShape', '3SsnPorch']
+    outfile = './data/lr50.csv'
 
     ### Ridge
     # ridge = RidgeCV(alphas = [270])
@@ -544,26 +605,46 @@ def main():
     # outfile = './data/ridge40.csv'
 
     ### Lasso
-    lasso = LassoCV(alphas=[0.00255])
+    # lasso = LassoCV(alphas=[0.00255])
     # 50
-    predictors = ['AllSF-sq', 'OverallQual', 'YearsOld', 'OverallCond', 'BsmtUnfSF', 
-                  'GarageCars', 'MSZoning_RM', 'YearsOld-log', 'MSZoning_C (all)', 'Fireplaces', 
-                  'OverallQual-s3', 'LotArea', 'Neighborhood_Crawfor', 'Functional', 'NearArtery', 
-                  'TotalBsmtSF-sq', 'KitchenAbvGr', 'SaleCondition_Abnorml', 'MSSubClass_160', 'CentralAir', 
-                  'BsmtExposure', 'KitchenQual', 'ScreenPorch', 'Neighborhood_BrkSide', 'Exterior1st_BrkFace', 
-                  'Neighborhood_Blmngtn', 'Neighborhood_MeadowV', 'Neighborhood_StoneBr', 'HeatingQC', 'SaleCondition_Partial', 
-                  'WoodDeckSF', 'Neighborhood_NoRidge', 'Neighborhood_Edwards', 'GarageQual', 'Neighborhood_ClearCr', 
-                  'BsmtQual', 'Neighborhood_Somerst', 'Neighborhood_NridgHt', 'PoolArea', 'HalfBath', 
-                  'MSSubClass_30', 'BsmtFinSF2', 'YearRemodAdd-log', 'OverallCond-s3', 'Neighborhood_Veenker', 
-                  'MSSubClass_120', 'BsmtFinType1', 'GarageCars-log', '3SsnPorch', 'Exterior1st_MetalSd']
-    outfile = './data/lasso.csv'
+    # predictors = ['AllSF-sq', 'OverallQual', 'YearsOld', 'OverallCond', 'BsmtUnfSF', 
+    #               'GarageCars', 'MSZoning_RM', 'YearsOld-log', 'MSZoning_C (all)', 'Fireplaces', 
+    #               'OverallQual-s3', 'LotArea', 'Neighborhood_Crawfor', 'Functional', 'NearArtery', 
+    #               'TotalBsmtSF-sq', 'KitchenAbvGr', 'SaleCondition_Abnorml', 'MSSubClass_160', 'CentralAir', 
+    #               'BsmtExposure', 'KitchenQual', 'ScreenPorch', 'Neighborhood_BrkSide', 'Exterior1st_BrkFace', 
+    #               'Neighborhood_Blmngtn', 'Neighborhood_MeadowV', 'Neighborhood_StoneBr', 'HeatingQC', 'SaleCondition_Partial', 
+    #               'WoodDeckSF', 'Neighborhood_NoRidge', 'Neighborhood_Edwards', 'GarageQual', 'Neighborhood_ClearCr', 
+    #               'BsmtQual', 'Neighborhood_Somerst', 'Neighborhood_NridgHt', 'PoolArea', 'HalfBath', 
+    #               'MSSubClass_30', 'BsmtFinSF2', 'YearRemodAdd-log', 'OverallCond-s3', 'Neighborhood_Veenker', 
+    #               'MSSubClass_120', 'BsmtFinType1', 'GarageCars-log', '3SsnPorch', 'Exterior1st_MetalSd']
+    # outfile = './data/lasso50.csv'
     
-    makeSubmission(lasso, predictors, outfile)
+    ### GBR
+    # gbr = GradientBoostingRegressor(n_estimators=1000, 
+    #                                 learning_rate=0.01, 
+    #                                 max_depth=5,  
+    #                                 min_samples_leaf=15, 
+    #                                 loss='huber', 
+    #                                 random_state=seed)
+    # predictors = ['AllSF-sq', 'OverallQual', 'YearsOld', 'OverallCond', 'BsmtUnfSF', 
+    #               'GarageCars', 'MSZoning_RM', 'YearsOld-log', 'MSZoning_C (all)', 'Fireplaces', 
+    #               'OverallQual-s3', 'LotArea', 'Neighborhood_Crawfor', 'Functional', 'NearArtery', 
+    #               'TotalBsmtSF-sq', 'KitchenAbvGr', 'SaleCondition_Abnorml', 'MSSubClass_160', 'CentralAir', 
+    #               'BsmtExposure', 'KitchenQual', 'ScreenPorch', 'Neighborhood_BrkSide', 'Exterior1st_BrkFace', 
+    #               'Neighborhood_Blmngtn', 'Neighborhood_MeadowV', 'Neighborhood_StoneBr', 'HeatingQC', 'SaleCondition_Partial', 
+    #               'WoodDeckSF', 'Neighborhood_NoRidge', 'Neighborhood_Edwards', 'GarageQual', 'Neighborhood_ClearCr', 
+    #               'BsmtQual', 'Neighborhood_Somerst', 'Neighborhood_NridgHt', 'PoolArea', 'HalfBath', 
+    #               'MSSubClass_30', 'BsmtFinSF2', 'YearRemodAdd-log', 'OverallCond-s3', 'Neighborhood_Veenker', 
+    #               'MSSubClass_120', 'BsmtFinType1', 'GarageCars-log', '3SsnPorch', 'Exterior1st_MetalSd']
+    # outfile = './data/gbr50.csv'
+
+    makeSubmission(lr, predictors, outfile)
 
 
 if __name__ == '__main__':
     main()
-    # findBestModelforLR(30)
-    # findBestModelforRidge(40)
-    # findBestModelforLasso(50)
+    numPredictors = 50
+    # findBestModelforLR(numPredictors)
+    # findBestModelforRidge(numPredictors)
+    # findBestModelforLasso(numPredictors)
     # findBestModelforGBR()
